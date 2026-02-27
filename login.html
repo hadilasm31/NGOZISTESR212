@@ -1,14 +1,54 @@
 <!DOCTYPE html>
 <html lang="fr">
+    
 <head>
+    
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connexion - Ngozistes du Royaume</title>
+    <meta name="description" content="Connectez-vous à votre espace membre Ngozistes du Royaume.">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="icon" type="image/png" href="images/favicon.ico">
     
     <!-- Configuration Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script>
+    // Enregistrer le service worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(registration => {
+                    console.log('ServiceWorker enregistré:', registration.scope);
+                })
+                .catch(error => {
+                    console.log('Erreur ServiceWorker:', error);
+                });
+        });
+    }
+
+    // Détection de la connexion
+    function checkConnection() {
+        if (!navigator.onLine) {
+            window.location.href = 'offline.html';
+        }
+    }
+
+    // Vérifier au chargement
+    window.addEventListener('load', checkConnection);
+
+    // Vérifier quand la connexion change
+    window.addEventListener('offline', () => {
+        window.location.href = 'offline.html';
+    });
+
+    window.addEventListener('online', () => {
+        console.log('Connexion rétablie');
+    });
+
+    // Vérification périodique
+    setInterval(checkConnection, 30000); // Toutes les 30 secondes
+</script>
     
     <style>
         /* Mêmes styles que votre login.html existant */
@@ -475,15 +515,7 @@
             color: var(--primary-color);
         }
 
-        /* Animation shake */
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-            20%, 40%, 60%, 80% { transform: translateX(5px); }
-        }
-        .shake { animation: shake 0.5s ease-in-out; }
-
-        /* Responsive */
+        /* Responsive (simplifié) */
         @media screen and (max-width: 768px) {
             body { padding-top: 70px; }
             .navbar { height: 70px; }
@@ -615,13 +647,6 @@
     </footer>
 
     <script>
-        // Configuration Supabase directe (sans fichier externe)
-        const SUPABASE_URL = 'https://gkvtwxnddpgoyrpedhua.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdnR3eG5kZHBnb3lycGVkaHVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5ODA0MzAsImV4cCI6MjA4NzU1NjQzMH0.iTSfiOGCFky2fk6JXubFRBK8A0sVGfqMqALzD0og1KM';
-        
-        // Initialiser Supabase
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
         // ==================== MENU MOBILE ====================
         const hamburger = document.getElementById('hamburger');
         const navMenu = document.getElementById('nav-menu');
@@ -631,14 +656,6 @@
                 hamburger.classList.toggle('active');
                 navMenu.classList.toggle('active');
                 document.body.classList.toggle('menu-open');
-            });
-
-            document.querySelectorAll('.nav-menu a').forEach(link => {
-                link.addEventListener('click', () => {
-                    hamburger.classList.remove('active');
-                    navMenu.classList.remove('active');
-                    document.body.classList.remove('menu-open');
-                });
             });
         }
 
@@ -659,7 +676,7 @@
         // ==================== MOT DE PASSE OUBLIÉ ====================
         document.getElementById('forgotPassword')?.addEventListener('click', function(e) {
             e.preventDefault();
-            alert('Veuillez contacter l\'administrateur : ngozisteduroyaume@gmail.com');
+            window.showToast('Veuillez contacter l\'administrateur pour réinitialiser votre mot de passe', 'info');
         });
 
         // ==================== EMAIL SAUVEGARDÉ ====================
@@ -692,46 +709,44 @@
             loginBtn.innerHTML = '<span class="loading-spinner"></span> Connexion...';
             
             try {
-                console.log('Tentative de connexion pour:', email);
-                
-                // Connexion avec Supabase
-                const { data, error } = await supabase.auth.signInWithPassword({
+                const { data, error } = await window.supabase.auth.signInWithPassword({
                     email: email,
                     password: password
                 });
                 
                 if (error) {
-                    console.error('Erreur auth:', error);
-                    throw new Error('Email ou mot de passe incorrect');
+                    alertDiv.textContent = 'Email ou mot de passe incorrect';
+                    alertDiv.className = 'alert error';
+                    alertDiv.style.display = 'block';
+                    
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Se connecter';
+                    
+                    document.querySelector('.login-container')?.classList.add('shake');
+                    setTimeout(() => {
+                        document.querySelector('.login-container')?.classList.remove('shake');
+                    }, 500);
+                    return;
                 }
                 
-                if (!data || !data.user) {
+                if (!data.user) {
                     throw new Error('Erreur de connexion');
                 }
                 
-                console.log('Auth réussie, ID utilisateur:', data.user.id);
-                
                 // Récupérer les infos utilisateur
-                const { data: userData, error: userError } = await supabase
+                const { data: userData, error: userError } = await window.supabase
                     .from('users')
                     .select('*')
                     .eq('id', data.user.id)
                     .single();
                 
                 if (userError) {
-                    console.error('Erreur récupération user:', userError);
-                    throw new Error('Erreur lors de la récupération des informations');
+                    throw userError;
                 }
-                
-                if (!userData) {
-                    throw new Error('Utilisateur non trouvé');
-                }
-                
-                console.log('Utilisateur trouvé:', userData.role, userData.status);
                 
                 // Vérifier le statut
                 if (userData.role === 'pending') {
-                    await supabase.auth.signOut();
+                    await window.supabase.auth.signOut();
                     alertDiv.textContent = 'Votre compte est en attente de validation';
                     alertDiv.className = 'alert info';
                     alertDiv.style.display = 'block';
@@ -742,7 +757,7 @@
                 }
                 
                 if (userData.status === 'inactive') {
-                    await supabase.auth.signOut();
+                    await window.supabase.auth.signOut();
                     alertDiv.textContent = 'Votre compte a été désactivé';
                     alertDiv.className = 'alert error';
                     alertDiv.style.display = 'block';
@@ -760,57 +775,41 @@
                 }
                 
                 // Message de succès
-                alertDiv.textContent = `Connexion réussie ! Redirection...`;
+                alertDiv.textContent = `Connexion réussie ! Bienvenue ${userData.prenom || ''}`;
                 alertDiv.className = 'alert success';
                 alertDiv.style.display = 'block';
                 
-                // REDIRECTION IMMÉDIATE
-                if (userData.role === 'super_admin' || userData.role === 'admin') {
-                    console.log('Redirection vers admin dashboard');
-                    window.location.href = 'admin/dashboard.html';
-                } else if (userData.role === 'member') {
-                    console.log('Redirection vers member dashboard');
-                    window.location.href = 'member/dashboard.html';
-                } else {
-                    console.log('Redirection vers accueil');
-                    window.location.href = 'index.html';
-                }
+                // Redirection
+                setTimeout(() => {
+                    if (userData.role === 'admin' || userData.role === 'super_admin') {
+                        window.location.href = 'admin/dashboard.html';
+                    } else {
+                        window.location.href = 'member/dashboard.html';
+                    }
+                }, 1500);
                 
             } catch (error) {
                 console.error('Erreur:', error);
-                alertDiv.textContent = error.message;
+                alertDiv.textContent = 'Une erreur est survenue';
                 alertDiv.className = 'alert error';
                 alertDiv.style.display = 'block';
                 
                 loginBtn.disabled = false;
                 loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Se connecter';
-                
-                // Animation shake
-                document.querySelector('.login-container')?.classList.add('shake');
-                setTimeout(() => {
-                    document.querySelector('.login-container')?.classList.remove('shake');
-                }, 500);
             }
         });
 
-        // Vérification simple - NE REDIRIGE PAS AUTOMATIQUEMENT
-        (async function() {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session) {
-                    console.log('Session active détectée pour:', session.user.email);
-                    // Optionnel: afficher un message mais ne pas rediriger
-                    const alertDiv = document.getElementById('login-alert');
-                    if (alertDiv) {
-                        alertDiv.textContent = 'Vous avez déjà une session active. Vous pouvez vous connecter à nouveau.';
-                        alertDiv.className = 'alert info';
-                        alertDiv.style.display = 'block';
-                    }
-                }
-            } catch (error) {
-                console.error('Erreur:', error);
+        // Ajouter l'animation shake
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+                20%, 40%, 60%, 80% { transform: translateX(5px); }
             }
-        })();
+            .shake { animation: shake 0.5s ease-in-out; }
+        `;
+        document.head.appendChild(style);
     </script>
 </body>
 </html>
