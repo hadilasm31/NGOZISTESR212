@@ -1,5 +1,5 @@
 // =====================================================
-// CONFIGURATION SUPABASE CENTRALISÉE
+// CONFIGURATION SUPABASE CENTRALISÉE - VERSION COMPLÈTE
 // =====================================================
 
 // Configuration Supabase
@@ -13,8 +13,63 @@ window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 console.log('✅ Supabase initialisé avec succès');
 
 // =====================================================
-// FONCTIONS UTILITAIRES GLOBALES
+// VÉRIFICATION ET REDIRECTION AUTOMATIQUE
 // =====================================================
+
+/**
+ * Vérifie l'utilisateur et redirige IMMÉDIATEMENT si nécessaire
+ * À APPELER AU DÉBUT DE CHAQUE PAGE PROTÉGÉE
+ */
+window.requireAuth = async function(requiredRole = null) {
+    try {
+        const { data: { session }, error } = await window.supabase.auth.getSession();
+        
+        // Pas de session → rediriger vers login
+        if (error || !session) {
+            console.log('❌ Pas de session, redirection vers login');
+            window.location.href = '/login.html';
+            return null;
+        }
+
+        // Récupérer les infos utilisateur
+        const { data: userData, error: userError } = await window.supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+        if (userError || !userData) {
+            console.log('❌ Utilisateur non trouvé, redirection vers login');
+            await window.supabase.auth.signOut();
+            window.location.href = '/login.html';
+            return null;
+        }
+
+        // Vérifier le rôle si spécifié
+        if (requiredRole) {
+            const allowedRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+            if (!allowedRoles.includes(userData.role)) {
+                console.log('❌ Rôle non autorisé, redirection appropriée');
+                if (userData.role === 'member') {
+                    window.location.href = '/member/dashboard.html';
+                } else if (userData.role === 'admin' || userData.role === 'super_admin') {
+                    window.location.href = '/admin/dashboard.html';
+                } else {
+                    window.location.href = '/index.html';
+                }
+                return null;
+            }
+        }
+
+        console.log('✅ Utilisateur authentifié:', userData.prenom);
+        return { user: userData, session };
+        
+    } catch (error) {
+        console.error('❌ Erreur auth:', error);
+        window.location.href = '/login.html';
+        return null;
+    }
+};
 
 /**
  * Déconnexion de l'utilisateur
