@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
-    
 <head>
-    
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connexion - Ngozistes du Royaume</title>
@@ -13,45 +11,74 @@
     <!-- Configuration Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
+    
+    <!-- REDIRECTION SI DÉJÀ CONNECTÉ - S'EXÉCUTE IMMÉDIATEMENT -->
     <script>
-    // Enregistrer le service worker
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js')
-                .then(registration => {
-                    console.log('ServiceWorker enregistré:', registration.scope);
-                })
-                .catch(error => {
-                    console.log('Erreur ServiceWorker:', error);
-                });
-        });
-    }
+        (async function() {
+            try {
+                const { data: { session } } = await window.supabase.auth.getSession();
+                
+                if (session) {
+                    // Récupérer le rôle de l'utilisateur
+                    const { data: userData } = await window.supabase
+                        .from('users')
+                        .select('role')
+                        .eq('id', session.user.id)
+                        .single();
+                    
+                    if (userData) {
+                        if (userData.role === 'admin' || userData.role === 'super_admin') {
+                            window.location.href = 'admin/dashboard.html';
+                        } else if (userData.role === 'member') {
+                            window.location.href = 'member/dashboard.html';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Erreur vérification:', error);
+            }
+        })();
+    </script>
 
-    // Détection de la connexion
-    function checkConnection() {
-        if (!navigator.onLine) {
-            window.location.href = 'offline.html';
+    <!-- SERVICE WORKER ET DÉTECTION CONNEXION -->
+    <script>
+        // Enregistrer le service worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(registration => {
+                        console.log('ServiceWorker enregistré:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('Erreur ServiceWorker:', error);
+                    });
+            });
         }
-    }
 
-    // Vérifier au chargement
-    window.addEventListener('load', checkConnection);
+        // Détection de la connexion
+        function checkConnection() {
+            if (!navigator.onLine) {
+                window.location.href = 'offline.html';
+            }
+        }
 
-    // Vérifier quand la connexion change
-    window.addEventListener('offline', () => {
-        window.location.href = 'offline.html';
-    });
+        // Vérifier au chargement
+        window.addEventListener('load', checkConnection);
 
-    window.addEventListener('online', () => {
-        console.log('Connexion rétablie');
-    });
+        // Vérifier quand la connexion change
+        window.addEventListener('offline', () => {
+            window.location.href = 'offline.html';
+        });
 
-    // Vérification périodique
-    setInterval(checkConnection, 30000); // Toutes les 30 secondes
-</script>
+        window.addEventListener('online', () => {
+            console.log('Connexion rétablie');
+        });
+
+        // Vérification périodique
+        setInterval(checkConnection, 30000); // Toutes les 30 secondes
+    </script>
     
     <style>
-        /* Mêmes styles que votre login.html existant */
         * {
             margin: 0;
             padding: 0;
@@ -515,7 +542,7 @@
             color: var(--primary-color);
         }
 
-        /* Responsive (simplifié) */
+        /* Responsive */
         @media screen and (max-width: 768px) {
             body { padding-top: 70px; }
             .navbar { height: 70px; }
@@ -552,6 +579,14 @@
             .login-container h1 { font-size: 2rem; }
             .form-options { flex-direction: column; gap: 10px; align-items: flex-start; }
         }
+
+        /* Animation shake */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .shake { animation: shake 0.5s ease-in-out; }
     </style>
 </head>
 <body>
@@ -657,6 +692,15 @@
                 navMenu.classList.toggle('active');
                 document.body.classList.toggle('menu-open');
             });
+
+            // Fermer le menu quand on clique sur un lien
+            document.querySelectorAll('.nav-menu a').forEach(link => {
+                link.addEventListener('click', () => {
+                    hamburger.classList.remove('active');
+                    navMenu.classList.remove('active');
+                    document.body.classList.remove('menu-open');
+                });
+            });
         }
 
         // ==================== TOGGLE MOT DE PASSE ====================
@@ -722,6 +766,7 @@
                     loginBtn.disabled = false;
                     loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Se connecter';
                     
+                    // Secouer le formulaire
                     document.querySelector('.login-container')?.classList.add('shake');
                     setTimeout(() => {
                         document.querySelector('.login-container')?.classList.remove('shake');
@@ -779,7 +824,7 @@
                 alertDiv.className = 'alert success';
                 alertDiv.style.display = 'block';
                 
-                // Redirection
+                // Redirection selon le rôle
                 setTimeout(() => {
                     if (userData.role === 'admin' || userData.role === 'super_admin') {
                         window.location.href = 'admin/dashboard.html';
@@ -798,18 +843,6 @@
                 loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Se connecter';
             }
         });
-
-        // Ajouter l'animation shake
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes shake {
-                0%, 100% { transform: translateX(0); }
-                10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-                20%, 40%, 60%, 80% { transform: translateX(5px); }
-            }
-            .shake { animation: shake 0.5s ease-in-out; }
-        `;
-        document.head.appendChild(style);
     </script>
 </body>
 </html>
