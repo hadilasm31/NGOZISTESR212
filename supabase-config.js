@@ -2,14 +2,15 @@
 // CONFIGURATION SUPABASE CENTRALISÉE
 // =====================================================
 
+// Configuration Supabase
 const SUPABASE_URL = 'https://gkvtwxnddpgoyrpedhua.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdnR3eG5kZHBnb3lycGVkaHVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5ODA0MzAsImV4cCI6MjA4NzU1NjQzMH0.iTSfiOGCFky2fk6JXubFRBK8A0sVGfqMqALzD0og1KM';
 
-// Vérifier que Supabase est disponible
-if (typeof window.supabase === 'undefined') {
-    window.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    console.log('✅ Supabase initialisé avec succès');
-}
+// Initialiser Supabase GLOBALEMENT
+const { createClient } = window.supabase;
+window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+console.log('✅ Supabase initialisé avec succès');
 
 // =====================================================
 // FONCTIONS UTILITAIRES GLOBALES
@@ -21,7 +22,6 @@ if (typeof window.supabase === 'undefined') {
 window.logout = async function() {
     try {
         await window.supabase.auth.signOut();
-        localStorage.removeItem('supabase.auth.token');
         localStorage.removeItem('user_display');
         window.location.href = 'index.html';
     } catch (error) {
@@ -47,7 +47,6 @@ window.getCurrentUser = async function() {
             .single();
         
         if (userError) {
-            console.error('Erreur récupération utilisateur:', userError);
             return { user: null, session };
         }
         
@@ -55,29 +54,6 @@ window.getCurrentUser = async function() {
     } catch (error) {
         console.error('Erreur getCurrentUser:', error);
         return { user: null, session: null };
-    }
-};
-
-/**
- * Rediriger l'utilisateur selon son rôle
- */
-window.redirectBasedOnRole = function(role) {
-    console.log('🔄 Redirection basée sur le rôle:', role);
-    
-    switch(role) {
-        case 'super_admin':
-        case 'admin':
-            window.location.href = 'admin/dashboard.html';
-            break;
-        case 'member':
-            window.location.href = 'member/dashboard.html';
-            break;
-        case 'pending':
-            alert('Votre compte est en attente de validation par un administrateur.');
-            window.location.href = 'index.html';
-            break;
-        default:
-            window.location.href = 'index.html';
     }
 };
 
@@ -119,10 +95,9 @@ window.showToast = function(message, type = 'info', duration = 3000) {
     }, duration);
 };
 
-// =====================================================
-// FONCTIONS DE FORMATAGE
-// =====================================================
-
+/**
+ * Formater une date
+ */
 window.formatDate = function(dateString, options = {}) {
     const defaultOptions = { 
         year: 'numeric', 
@@ -134,11 +109,17 @@ window.formatDate = function(dateString, options = {}) {
     return new Date(dateString).toLocaleDateString('fr-FR', { ...defaultOptions, ...options });
 };
 
+/**
+ * Tronquer un texte
+ */
 window.truncateText = function(text, maxLength = 100) {
     if (!text) return '';
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
 };
 
+/**
+ * Obtenir le libellé d'une catégorie
+ */
 window.getCategoryLabel = function(category) {
     const labels = {
         'environnement': 'Environnement',
