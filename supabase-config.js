@@ -5,135 +5,66 @@
 const SUPABASE_URL = 'https://gkvtwxnddpgoyrpedhua.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdnR3eG5kZHBnb3lycGVkaHVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5ODA0MzAsImV4cCI6MjA4NzU1NjQzMH0.iTSfiOGCFky2fk6JXubFRBK8A0sVGfqMqALzD0og1KM';
 
-// Initialiser Supabase
+// Initialiser Supabase GLOBALEMENT
 const { createClient } = window.supabase;
 window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 console.log('✅ Supabase initialisé avec succès');
 
 // =====================================================
-// GESTIONNAIRE D'AUTHENTIFICATION CENTRALISÉ
-// =====================================================
-
-window.AuthManager = {
-    // Vérifier l'utilisateur courant
-    async getCurrentUser() {
-        try {
-            const { data: { session }, error } = await window.supabase.auth.getSession();
-            
-            if (error || !session) {
-                return { user: null, session: null };
-            }
-
-            const { data: userData, error: userError } = await window.supabase
-                .from('users')
-                .select('*')
-                .eq('id', session.user.id)
-                .single();
-
-            if (userError || !userData) {
-                return { user: null, session };
-            }
-
-            // Mettre en cache
-            try {
-                localStorage.setItem('current_user', JSON.stringify({
-                    id: userData.id,
-                    email: userData.email,
-                    nom: userData.nom,
-                    prenom: userData.prenom,
-                    role: userData.role,
-                    photo: userData.photo,
-                    status: userData.status
-                }));
-            } catch (e) {}
-
-            return { user: userData, session };
-        } catch (error) {
-            console.error('Erreur getCurrentUser:', error);
-            return { user: null, session: null };
-        }
-    },
-
-    // Vérifier l'authentification avec redirection
-    async requireAuth(allowedRoles = null) {
-        const { user, session } = await this.getCurrentUser();
-        
-        if (!session || !user) {
-            window.location.href = '/login.html';
-            return null;
-        }
-
-        // Vérifier le statut
-        if (user.status === 'pending') {
-            await window.supabase.auth.signOut();
-            window.location.href = '/login.html?status=pending';
-            return null;
-        }
-
-        if (user.status === 'inactive') {
-            await window.supabase.auth.signOut();
-            window.location.href = '/login.html?status=inactive';
-            return null;
-        }
-
-        // Vérifier les rôles autorisés
-        if (allowedRoles) {
-            const hasAccess = allowedRoles.some(role => {
-                if (role === 'admin') return ['admin', 'super_admin'].includes(user.role);
-                if (role === 'super_admin') return user.role === 'super_admin';
-                if (role === 'member') return user.role === 'member';
-                return user.role === role;
-            });
-
-            if (!hasAccess) {
-                if (user.role === 'admin' || user.role === 'super_admin') {
-                    window.location.href = '/admin/dashboard.html';
-                } else if (user.role === 'member') {
-                    window.location.href = '/member/dashboard.html';
-                } else {
-                    window.location.href = '/index.html';
-                }
-                return null;
-            }
-        }
-
-        return user;
-    },
-
-    // Rediriger vers le bon dashboard
-    async redirectToDashboard() {
-        const { user } = await this.getCurrentUser();
-        
-        if (!user) {
-            window.location.href = '/login.html';
-            return;
-        }
-
-        if (user.role === 'super_admin' || user.role === 'admin') {
-            window.location.href = '/admin/dashboard.html';
-        } else if (user.role === 'member') {
-            window.location.href = '/member/dashboard.html';
-        } else {
-            window.location.href = '/index.html';
-        }
-    },
-
-    // Déconnexion
-    async logout() {
-        await window.supabase.auth.signOut();
-        localStorage.removeItem('current_user');
-        localStorage.removeItem('rememberedEmail');
-        window.location.href = '/index.html';
-    }
-};
-
-// =====================================================
 // FONCTIONS UTILITAIRES GLOBALES
 // =====================================================
 
-window.logout = window.AuthManager.logout;
+/**
+ * Déconnexion de l'utilisateur
+ */
+window.logout = async function() {
+    try {
+        await window.supabase.auth.signOut();
+        sessionStorage.removeItem('currentUser');
+        localStorage.removeItem('rememberedEmail');
+        window.location.href = 'index.html';
+    } catch (error) {
+        console.error('Erreur déconnexion:', error);
+    }
+};
 
+/**
+ * Récupérer l'utilisateur courant
+ */
+window.getCurrentUser = async function() {
+    // Vérifier d'abord dans sessionStorage
+    const storedUser = sessionStorage.getItem('currentUser');
+    if (storedUser) {
+        return JSON.parse(storedUser);
+    }
+    
+    // Sinon, vérifier avec Supabase
+    try {
+        const { data: { session } } = await window.supabase.auth.getSession();
+        if (!session) return null;
+        
+        const { data: userData, error } = await window.supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+        
+        if (error || !userData) return null;
+        
+        // Stocker pour les prochaines fois
+        sessionStorage.setItem('currentUser', JSON.stringify(userData));
+        
+        return userData;
+    } catch (error) {
+        console.error('Erreur getCurrentUser:', error);
+        return null;
+    }
+};
+
+/**
+ * Afficher une notification toast
+ */
 window.showToast = function(message, type = 'info', duration = 3000) {
     let toast = document.querySelector('.toast-notification');
     if (!toast) {
@@ -169,11 +100,36 @@ window.showToast = function(message, type = 'info', duration = 3000) {
     }, duration);
 };
 
+/**
+ * Formater une date
+ */
+window.formatDate = function(dateString, options = {}) {
+    if (!dateString) return '-';
+    const defaultOptions = { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    };
+    try {
+        return new Date(dateString).toLocaleDateString('fr-FR', { ...defaultOptions, ...options });
+    } catch (e) {
+        return dateString;
+    }
+};
+
+/**
+ * Tronquer un texte
+ */
 window.truncateText = function(text, maxLength = 100) {
     if (!text) return '';
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
 };
 
+/**
+ * Obtenir le libellé d'une catégorie
+ */
 window.getCategoryLabel = function(category) {
     const labels = {
         'environnement': 'Environnement',
@@ -183,4 +139,21 @@ window.getCategoryLabel = function(category) {
         'general': 'Général'
     };
     return labels[category] || 'Général';
+};
+
+/**
+ * Valider une adresse email
+ */
+window.validateEmail = function(email) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+};
+
+/**
+ * Confirmer une action
+ */
+window.confirmAction = function(message, callback) {
+    if (confirm(message)) {
+        callback();
+    }
 };
