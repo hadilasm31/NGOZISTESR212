@@ -11,7 +11,111 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../supabase-config.js"></script>
     
+    <script>
+    // Enregistrer le service worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(registration => {
+                    console.log('ServiceWorker enregistré:', registration.scope);
+                })
+                .catch(error => {
+                    console.log('Erreur ServiceWorker:', error);
+                });
+        });
+    }
+
+    // Détection de la connexion
+    function checkConnection() {
+        if (!navigator.onLine) {
+            window.location.href = 'offline.html';
+        }
+    }
+    window.addEventListener('load', checkConnection);
+    window.addEventListener('offline', () => {
+        window.location.href = 'offline.html';
+    });
+    setInterval(checkConnection, 30000);
+    </script>
+
+    <!-- Vérification d'authentification MEMBRE -->
+    <script>
+        (async function() {
+            try {
+                console.log('Vérification authentification membre...');
+                
+                // 1. Vérifier d'abord dans sessionStorage
+                const storedUser = sessionStorage.getItem('currentUser');
+                if (storedUser) {
+                    const user = JSON.parse(storedUser);
+                    console.log('Utilisateur trouvé dans sessionStorage:', user);
+                    
+                    if (user.role === 'member') {
+                        window.currentUser = user;
+                        console.log('✅ Membre authentifié depuis sessionStorage:', user.prenom);
+                        return; // OK, on continue
+                    } else if (user.role === 'admin' || user.role === 'super_admin') {
+                        // Si c'est un admin, rediriger vers admin dashboard
+                        window.location.href = '../admin/dashboard.html';
+                        return;
+                    }
+                }
+                
+                // 2. Sinon, vérifier avec Supabase Auth
+                const { data: { session } } = await window.supabase.auth.getSession();
+                
+                if (!session) {
+                    console.log('❌ Pas de session, redirection vers login');
+                    window.location.href = '../login.html';
+                    return;
+                }
+                
+                // 3. Récupérer les infos depuis la table users
+                const { data: userData, error } = await window.supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', session.user.id)
+                    .single();
+                
+                if (error || !userData) {
+                    console.log('❌ Utilisateur non trouvé, redirection vers login');
+                    window.location.href = '../login.html';
+                    return;
+                }
+                
+                // 4. Vérifier le rôle
+                if (userData.role === 'admin' || userData.role === 'super_admin') {
+                    // Si c'est un admin, rediriger vers admin dashboard
+                    window.location.href = '../admin/dashboard.html';
+                    return;
+                }
+                
+                if (userData.role !== 'member') {
+                    console.log('❌ Pas les droits membre, redirection vers index');
+                    window.location.href = '../index.html';
+                    return;
+                }
+                
+                if (userData.status !== 'active') {
+                    console.log('❌ Compte inactif, redirection vers index');
+                    window.location.href = '../index.html';
+                    return;
+                }
+                
+                // 5. Stocker l'utilisateur pour les autres pages
+                window.currentUser = userData;
+                sessionStorage.setItem('currentUser', JSON.stringify(userData));
+                console.log('✅ Membre authentifié depuis Supabase:', userData.prenom);
+                
+            } catch (error) {
+                console.error('❌ Erreur auth:', error);
+                window.location.href = '../login.html';
+            }
+        })();
+    </script>
+    
     <style>
+        /* Styles du dashboard membre - simplifiés */
         * {
             margin: 0;
             padding: 0;
@@ -43,6 +147,7 @@
             min-height: 100vh;
         }
 
+        /* Sidebar */
         .sidebar {
             width: 280px;
             background: white;
@@ -50,7 +155,6 @@
             position: fixed;
             height: 100vh;
             overflow-y: auto;
-            z-index: 100;
         }
 
         .sidebar-header {
@@ -62,18 +166,6 @@
         .sidebar-header img {
             height: 60px;
             margin-bottom: 10px;
-        }
-
-        .sidebar-header h3 {
-            font-size: 1.2rem;
-        }
-
-        .sidebar-header .logo-ngozistes {
-            color: #ff0000;
-        }
-
-        .sidebar-header .logo-royaume {
-            color: #000000;
         }
 
         .user-info {
@@ -91,23 +183,9 @@
             object-fit: cover;
         }
 
-        .user-info h4 {
-            color: var(--dark-color);
-            margin-bottom: 5px;
-        }
-
-        .user-info p {
-            color: var(--text-color);
-            font-size: 0.9rem;
-        }
-
         .sidebar-nav ul {
             list-style: none;
             padding: 20px 0;
-        }
-
-        .sidebar-nav li {
-            margin-bottom: 5px;
         }
 
         .sidebar-nav a {
@@ -122,7 +200,6 @@
         .sidebar-nav a i {
             width: 25px;
             margin-right: 10px;
-            font-size: 1.1rem;
         }
 
         .sidebar-nav li.active a,
@@ -144,20 +221,9 @@
             align-items: center;
             color: var(--danger-color);
             text-decoration: none;
-            padding: 10px;
-            border-radius: var(--border-radius);
-            transition: var(--transition);
         }
 
-        .logout:hover {
-            background: #ffebee;
-        }
-
-        .logout i {
-            width: 25px;
-            margin-right: 10px;
-        }
-
+        /* Main Content */
         .main-content {
             flex: 1;
             margin-left: 280px;
@@ -186,26 +252,6 @@
             gap: 20px;
         }
 
-        .notification-badge {
-            position: relative;
-            cursor: pointer;
-            font-size: 1.2rem;
-            color: var(--text-color);
-        }
-
-        .notification-badge .badge {
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background: var(--danger-color);
-            color: white;
-            font-size: 0.7rem;
-            padding: 2px 6px;
-            border-radius: 10px;
-            min-width: 18px;
-            text-align: center;
-        }
-
         .user-menu {
             display: flex;
             align-items: center;
@@ -228,88 +274,45 @@
             border: 2px solid var(--primary-color);
         }
 
-        .user-name {
-            font-weight: 500;
-            color: var(--dark-color);
-        }
-
-        .dropdown-menu {
-            position: absolute;
-            top: 70px;
-            right: 30px;
-            background: white;
-            border-radius: var(--border-radius);
-            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
-            min-width: 200px;
-            z-index: 200;
-            display: none;
-        }
-
-        .dropdown-menu.show {
-            display: block;
-        }
-
-        .dropdown-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 12px 20px;
-            color: var(--text-color);
-            text-decoration: none;
-            transition: var(--transition);
-        }
-
-        .dropdown-item:hover {
-            background: var(--light-color);
-            color: var(--primary-color);
-        }
-
-        .dropdown-item i {
-            width: 20px;
-        }
-
-        .dropdown-item.logout {
-            color: var(--danger-color);
-        }
-
-        .dropdown-divider {
-            height: 1px;
-            background: #eee;
-            margin: 8px 0;
-        }
-
-        .stats-grid {
+        /* Stats Cards */
+        .member-stats {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 20px;
             margin-bottom: 30px;
         }
 
-        .stat-card {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            color: white;
-            padding: 20px;
+        .member-stat-card {
+            background: white;
             border-radius: var(--border-radius);
-            text-align: center;
+            padding: 25px;
             box-shadow: var(--box-shadow);
+            display: flex;
+            align-items: center;
+            gap: 20px;
             transition: var(--transition);
         }
 
-        .stat-card:hover {
+        .member-stat-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
         }
 
-        .stat-card .number {
-            font-size: 2rem;
+        .member-stat-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.8rem;
+        }
+
+        .member-stat-number {
+            font-size: 1.8rem;
             font-weight: bold;
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        .stat-card .label {
-            font-size: 0.9rem;
-            opacity: 0.9;
+            color: var(--dark-color);
         }
 
         .dashboard-section {
@@ -329,35 +332,6 @@
             gap: 10px;
         }
 
-        .dashboard-section h2 i {
-            color: var(--primary-color);
-        }
-
-        .profile-info {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-        }
-
-        .info-item {
-            padding: 10px;
-            background: var(--light-color);
-            border-radius: var(--border-radius);
-        }
-
-        .info-item label {
-            display: block;
-            font-size: 0.8rem;
-            color: var(--text-color);
-            margin-bottom: 5px;
-        }
-
-        .info-item span {
-            font-size: 1rem;
-            color: var(--dark-color);
-            font-weight: 500;
-        }
-
         .events-list {
             display: flex;
             flex-direction: column;
@@ -371,12 +345,6 @@
             padding: 15px;
             background: var(--light-color);
             border-radius: var(--border-radius);
-            transition: var(--transition);
-        }
-
-        .event-item:hover {
-            transform: translateX(5px);
-            background: #e8f5e9;
         }
 
         .event-info {
@@ -408,30 +376,18 @@
             text-transform: uppercase;
         }
 
-        .event-details h4 {
-            color: var(--dark-color);
-            margin-bottom: 5px;
-        }
-
-        .event-details p {
-            font-size: 0.9rem;
-            color: var(--text-color);
-        }
-
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
+        .view-all {
+            display: inline-block;
+            margin-top: 15px;
+            color: var(--primary-color);
+            text-decoration: none;
             font-weight: 500;
-            background: #e8f5e9;
-            color: #2e7d32;
         }
 
         .loading {
             text-align: center;
             padding: 40px;
             color: var(--text-color);
-            font-size: 1.1rem;
         }
 
         .loading::after {
@@ -457,17 +413,11 @@
             font-style: italic;
         }
 
-        .error {
-            text-align: center;
-            padding: 40px;
-            color: var(--danger-color);
-        }
-
+        /* Responsive */
         @media screen and (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
                 transition: transform 0.3s ease;
-                z-index: 1000;
             }
             
             .sidebar.active {
@@ -479,45 +429,8 @@
                 padding: 20px;
             }
             
-            .content-header {
-                flex-direction: column;
-                gap: 15px;
-                text-align: center;
-            }
-            
-            .content-header h1 {
-                font-size: 1.5rem;
-            }
-            
-            .stats-grid {
+            .member-stats {
                 grid-template-columns: 1fr;
-            }
-            
-            .profile-info {
-                grid-template-columns: 1fr;
-            }
-            
-            .event-info {
-                flex-direction: column;
-                text-align: center;
-            }
-            
-            .event-date-badge {
-                margin: 0 auto;
-            }
-        }
-
-        @media screen and (max-width: 480px) {
-            .main-content {
-                padding: 15px;
-            }
-            
-            .stat-card {
-                padding: 15px;
-            }
-            
-            .stat-card .number {
-                font-size: 1.5rem;
             }
         }
     </style>
@@ -540,6 +453,7 @@
             <nav class="sidebar-nav">
                 <ul>
                     <li class="active"><a href="#" onclick="showPanel('dashboard'); return false;"><i class="fas fa-tachometer-alt"></i> Tableau de bord</a></li>
+                    <li><a href="#" onclick="showPanel('events'); return false;"><i class="fas fa-calendar-alt"></i> Événements</a></li>
                     <li><a href="#" onclick="showPanel('profile'); return false;"><i class="fas fa-user"></i> Mon profil</a></li>
                 </ul>
             </nav>
@@ -552,270 +466,264 @@
         <!-- Main Content -->
         <main class="main-content">
             <header class="content-header">
-                <h1 id="page-title">Tableau de bord</h1>
+                <h1>Espace Membre</h1>
                 <div class="header-actions">
-                    <span class="notification-badge" onclick="showNotifications()">
-                        <i class="fas fa-bell"></i>
-                        <span class="badge" id="notification-count">0</span>
-                    </span>
                     <span class="user-menu" onclick="toggleUserMenu()">
-                        <img src="../images/default-avatar.png" alt="Avatar" class="user-avatar-small" id="header-avatar">
-                        <span class="user-name" id="header-name">Chargement...</span>
+                        <img src="../images/default-avatar.png" alt="Avatar" id="header-avatar">
                         <i class="fas fa-chevron-down"></i>
                     </span>
                 </div>
             </header>
 
-            <!-- User Menu Dropdown -->
-            <div class="dropdown-menu" id="user-dropdown">
-                <a href="#" class="dropdown-item" onclick="viewProfile()">
-                    <i class="fas fa-user"></i> Mon profil
-                </a>
-                <div class="dropdown-divider"></div>
-                <a href="#" class="dropdown-item logout" onclick="logout()">
-                    <i class="fas fa-sign-out-alt"></i> Déconnexion
-                </a>
+            <!-- Dashboard Panel -->
+            <div id="dashboard-panel" class="admin-panel active">
+                <div class="member-stats" id="member-stats">
+                    <div class="loading">Chargement...</div>
+                </div>
+
+                <div class="dashboard-section">
+                    <h2><i class="fas fa-calendar-alt"></i> Mes prochains événements</h2>
+                    <div class="events-list" id="member-events">
+                        <div class="loading">Chargement...</div>
+                    </div>
+                    <a href="#" class="view-all" onclick="showPanel('events'); return false;">Voir tous mes événements →</a>
+                </div>
             </div>
 
-            <!-- Dashboard Panel -->
-            <div id="dashboard-panel" class="admin-panel">
-                <div class="loading">Chargement du tableau de bord...</div>
+            <!-- Events Panel -->
+            <div id="events-panel" class="admin-panel" style="display: none;">
+                <h2>Mes événements</h2>
+                <div class="events-list" id="my-events-list">
+                    <div class="loading">Chargement...</div>
+                </div>
             </div>
 
             <!-- Profile Panel -->
             <div id="profile-panel" class="admin-panel" style="display: none;">
-                <div class="loading">Chargement du profil...</div>
+                <h2>Mon profil</h2>
+                <div id="profile-content">
+                    <div class="loading">Chargement...</div>
+                </div>
             </div>
         </main>
     </div>
 
     <script>
-        // ==================== VÉRIFICATION D'AUTHENTIFICATION ====================
-        (async function() {
-            try {
-                console.log('🔐 Vérification authentification membre...');
-                
-                const user = await window.AuthManager.requireAuth(['member']);
-                
-                if (!user) return;
-                
-                window.currentUser = user;
-                
-                document.getElementById('user-name').textContent = `${user.prenom || ''} ${user.nom || ''}`.trim() || 'Membre';
-                document.getElementById('header-name').textContent = `${user.prenom || ''} ${user.nom || ''}`.trim() || 'Membre';
-                document.getElementById('user-role').textContent = 'Membre';
-                
-                if (user.photo) {
-                    document.getElementById('user-avatar').src = user.photo;
-                    document.getElementById('header-avatar').src = user.photo;
-                }
-                
-                console.log('✅ Membre authentifié:', user.prenom);
-                
-                await loadDashboard();
-                
-            } catch (error) {
-                console.error('❌ Erreur fatale:', error);
+        // ==================== VARIABLES GLOBALES ====================
+        let currentUser = window.currentUser || null;
+
+        // ==================== INITIALISATION ====================
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!window.currentUser) {
+                window.location.href = '../login.html';
+                return;
             }
-        })();
+            
+            currentUser = window.currentUser;
+            await updateUI();
+            await loadDashboard();
+        });
+
+        // ==================== MISE À JOUR DE L'INTERFACE ====================
+        async function updateUI() {
+            if (!currentUser) return;
+            
+            document.getElementById('user-name').textContent = `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim() || 'Membre';
+            
+            if (currentUser.photo) {
+                document.getElementById('user-avatar').src = currentUser.photo;
+                document.getElementById('header-avatar').src = currentUser.photo;
+            }
+        }
 
         // ==================== CHARGEMENT DU DASHBOARD ====================
         async function loadDashboard() {
-            const panel = document.getElementById('dashboard-panel');
-            panel.innerHTML = '<div class="loading">Chargement...</div>';
-            
             try {
-                // Récupérer les inscriptions aux événements
+                // Récupérer les inscriptions de l'utilisateur
                 const { data: registrations } = await window.supabase
                     .from('event_registrations')
                     .select(`
                         *,
                         events (*)
                     `)
-                    .eq('user_id', window.currentUser.id)
-                    .order('registered_at', { ascending: false });
+                    .eq('user_id', currentUser.id)
+                    .eq('status', 'confirmed');
                 
                 const upcomingRegistrations = registrations?.filter(r => 
                     r.events && new Date(r.events.date) > new Date()
                 ) || [];
                 
-                panel.innerHTML = `
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <span class="number">${upcomingRegistrations.length}</span>
-                            <span class="label">Événements à venir</span>
+                // Stats
+                const statsContainer = document.getElementById('member-stats');
+                statsContainer.innerHTML = `
+                    <div class="member-stat-card">
+                        <div class="member-stat-icon">
+                            <i class="fas fa-calendar-check"></i>
                         </div>
-                        <div class="stat-card">
-                            <span class="number">${registrations?.length || 0}</span>
-                            <span class="label">Inscriptions totales</span>
-                        </div>
-                    </div>
-
-                    <div class="dashboard-section">
-                        <h2><i class="fas fa-user"></i> Bienvenue, ${window.currentUser.prenom || ''} !</h2>
-                        <div class="profile-info">
-                            <div class="info-item">
-                                <label>Email</label>
-                                <span>${window.currentUser.email || 'Non renseigné'}</span>
-                            </div>
-                            <div class="info-item">
-                                <label>Téléphone</label>
-                                <span>${window.currentUser.telephone || 'Non renseigné'}</span>
-                            </div>
-                            <div class="info-item">
-                                <label>Ville</label>
-                                <span>${window.currentUser.ville || 'Non renseignée'}</span>
-                            </div>
-                            <div class="info-item">
-                                <label>Membre depuis</label>
-                                <span>${window.currentUser.created_at ? new Date(window.currentUser.created_at).toLocaleDateString('fr-FR') : '-'}</span>
-                            </div>
+                        <div class="member-stat-details">
+                            <h3>Événements à venir</h3>
+                            <span class="member-stat-number">${upcomingRegistrations.length}</span>
                         </div>
                     </div>
-
-                    <div class="dashboard-section">
-                        <h2><i class="fas fa-calendar-alt"></i> Mes prochains événements</h2>
-                        <div class="events-list" id="events-list">
-                            ${upcomingRegistrations.length > 0 ? 
-                                upcomingRegistrations.map(reg => {
-                                    const event = reg.events;
-                                    const eventDate = new Date(event.date);
-                                    const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-                                    
-                                    return `
-                                        <div class="event-item">
-                                            <div class="event-info">
-                                                <div class="event-date-badge">
-                                                    <span class="day">${eventDate.getDate()}</span>
-                                                    <span class="month">${months[eventDate.getMonth()]}</span>
-                                                </div>
-                                                <div class="event-details">
-                                                    <h4>${event.title}</h4>
-                                                    <p><i class="fas fa-map-marker-alt"></i> ${event.location || 'Lieu à définir'}</p>
-                                                </div>
-                                            </div>
-                                            <span class="status-badge">Confirmé</span>
-                                        </div>
-                                    `;
-                                }).join('') : 
-                                '<p class="no-data">Aucun événement à venir</p>'
-                            }
+                    <div class="member-stat-card">
+                        <div class="member-stat-icon">
+                            <i class="fas fa-star"></i>
+                        </div>
+                        <div class="member-stat-details">
+                            <h3>Membre depuis</h3>
+                            <span class="member-stat-number">${currentUser.created_at ? new Date(currentUser.created_at).toLocaleDateString('fr-FR') : '-'}</span>
                         </div>
                     </div>
                 `;
                 
+                // Événements à venir
+                const eventsContainer = document.getElementById('member-events');
+                if (upcomingRegistrations.length > 0) {
+                    const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+                    
+                    eventsContainer.innerHTML = upcomingRegistrations.slice(0, 3).map(reg => {
+                        const event = reg.events;
+                        if (!event) return '';
+                        
+                        const eventDate = new Date(event.date);
+                        
+                        return `
+                            <div class="event-item">
+                                <div class="event-info">
+                                    <div class="event-date-badge">
+                                        <span class="day">${eventDate.getDate()}</span>
+                                        <span class="month">${months[eventDate.getMonth()]}</span>
+                                    </div>
+                                    <div class="event-details">
+                                        <h3>${event.title || ''}</h3>
+                                        <p><i class="fas fa-map-marker-alt"></i> ${event.location || 'Lieu à définir'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    eventsContainer.innerHTML = '<p class="no-data">Aucun événement à venir</p>';
+                }
+                
             } catch (error) {
                 console.error('Erreur:', error);
-                panel.innerHTML = '<p class="error">Erreur de chargement du tableau de bord</p>';
             }
         }
 
-        // ==================== CHARGEMENT DU PROFIL ====================
-        async function loadProfile() {
-            const panel = document.getElementById('profile-panel');
-            
-            const user = window.currentUser;
-            const metadata = user.metadata || {};
-            
-            panel.innerHTML = `
-                <div class="dashboard-section">
-                    <h2><i class="fas fa-user-circle"></i> Mon profil</h2>
-                    
-                    <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 30px;">
-                        <img src="${user.photo || '../images/default-avatar.png'}" 
-                             style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid var(--primary-color);">
-                        <div>
-                            <h3 style="color: var(--dark-color); margin-bottom: 5px;">${user.prenom || ''} ${user.nom || ''}</h3>
-                            <p style="color: var(--text-color);">Membre depuis ${user.created_at ? new Date(user.created_at).toLocaleDateString('fr-FR') : '-'}</p>
-                        </div>
-                    </div>
-
-                    <div class="profile-info">
-                        <div class="info-item">
-                            <label>Email</label>
-                            <span>${user.email || ''}</span>
-                        </div>
-                        <div class="info-item">
-                            <label>Téléphone</label>
-                            <span>${user.telephone || 'Non renseigné'}</span>
-                        </div>
-                        <div class="info-item">
-                            <label>Ville</label>
-                            <span>${user.ville || 'Non renseignée'}</span>
-                        </div>
-                        <div class="info-item">
-                            <label>Newsletter</label>
-                            <span>${user.newsletter ? 'Abonné' : 'Non abonné'}</span>
-                        </div>
-                    </div>
-
-                    <div class="dashboard-section" style="margin-top: 20px;">
-                        <h3>Ma motivation</h3>
-                        <p style="background: var(--light-color); padding: 15px; border-radius: var(--border-radius);">
-                            ${user.motivation || 'Aucune motivation renseignée'}
-                        </p>
-                    </div>
-
-                    ${metadata.lycee_technique ? `
-                        <div class="dashboard-section">
-                            <h3>Parcours technique</h3>
-                            <div class="profile-info">
-                                <div class="info-item">
-                                    <label>Lycée</label>
-                                    <span>${metadata.nom_lycee || '-'}</span>
-                                </div>
-                                <div class="info-item">
-                                    <label>Filière</label>
-                                    <span>${metadata.filiere || '-'}</span>
-                                </div>
-                                <div class="info-item">
-                                    <label>Année de départ</label>
-                                    <span>${metadata.annee_depart || '-'}</span>
-                                </div>
-                            </div>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        }
-
-        // ==================== GESTION DES PANNEAUX ====================
+        // ==================== NAVIGATION ====================
         window.showPanel = function(panelName) {
             document.querySelectorAll('.admin-panel').forEach(p => p.style.display = 'none');
             document.getElementById(panelName + '-panel').style.display = 'block';
             
             document.querySelectorAll('.sidebar-nav li').forEach(li => li.classList.remove('active'));
             if (event && event.target) {
-                event.target.closest('li').classList.add('active');
+                const li = event.target.closest('li');
+                if (li) li.classList.add('active');
             }
             
-            document.getElementById('page-title').textContent = 
-                panelName === 'dashboard' ? 'Tableau de bord' : 'Mon profil';
-            
+            if (panelName === 'events') loadMyEvents();
             if (panelName === 'profile') loadProfile();
         };
 
-        // ==================== FONCTIONS UTILITAIRES ====================
         window.toggleUserMenu = function() {
-            document.getElementById('user-dropdown').classList.toggle('show');
+            // Menu simple - pourrait être amélioré
+            alert('Menu utilisateur - Fonctionnalité en développement');
         };
 
-        window.viewProfile = function() {
-            showPanel('profile');
-        };
-
-        window.showNotifications = function() {
-            window.showToast('Notifications en développement', 'info');
-        };
-
-        // Fermer le menu en cliquant ailleurs
-        document.addEventListener('click', (e) => {
-            const menu = document.getElementById('user-dropdown');
-            const userMenu = document.querySelector('.user-menu');
-            if (menu && userMenu && !userMenu.contains(e.target) && !menu.contains(e.target)) {
-                menu.classList.remove('show');
+        // ==================== CHARGEMENT DES ÉVÉNEMENTS ====================
+        async function loadMyEvents() {
+            const container = document.getElementById('my-events-list');
+            
+            try {
+                const { data: registrations } = await window.supabase
+                    .from('event_registrations')
+                    .select(`
+                        *,
+                        events (*)
+                    `)
+                    .eq('user_id', currentUser.id)
+                    .eq('status', 'confirmed');
+                
+                const events = registrations?.map(r => r.events).filter(e => e) || [];
+                
+                if (events.length > 0) {
+                    const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+                    
+                    container.innerHTML = events.map(event => {
+                        const eventDate = new Date(event.date);
+                        return `
+                            <div class="event-item">
+                                <div class="event-info">
+                                    <div class="event-date-badge">
+                                        <span class="day">${eventDate.getDate()}</span>
+                                        <span class="month">${months[eventDate.getMonth()]}</span>
+                                    </div>
+                                    <div class="event-details">
+                                        <h3>${event.title || ''}</h3>
+                                        <p><i class="fas fa-map-marker-alt"></i> ${event.location || 'Lieu à définir'}</p>
+                                        <p><i class="fas fa-clock"></i> ${eventDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    container.innerHTML = '<p class="no-data">Aucune inscription à un événement</p>';
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                container.innerHTML = '<p class="error">Erreur de chargement</p>';
             }
-        });
+        }
+
+        // ==================== CHARGEMENT DU PROFIL ====================
+        function loadProfile() {
+            const container = document.getElementById('profile-content');
+            
+            container.innerHTML = `
+                <div style="background: white; padding: 30px; border-radius: var(--border-radius);">
+                    <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 30px;">
+                        <img src="${currentUser.photo || '../images/default-avatar.png'}" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid var(--primary-color);">
+                        <div>
+                            <h2 style="color: var(--dark-color);">${currentUser.prenom || ''} ${currentUser.nom || ''}</h2>
+                            <p style="color: var(--primary-color);">Membre</p>
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                        <div style="padding: 15px; background: var(--light-color); border-radius: var(--border-radius);">
+                            <p><strong>Email:</strong> ${currentUser.email || '-'}</p>
+                        </div>
+                        <div style="padding: 15px; background: var(--light-color); border-radius: var(--border-radius);">
+                            <p><strong>Téléphone:</strong> ${currentUser.telephone || '-'}</p>
+                        </div>
+                        <div style="padding: 15px; background: var(--light-color); border-radius: var(--border-radius);">
+                            <p><strong>Ville:</strong> ${currentUser.ville || '-'}</p>
+                        </div>
+                        <div style="padding: 15px; background: var(--light-color); border-radius: var(--border-radius);">
+                            <p><strong>Membre depuis:</strong> ${currentUser.created_at ? new Date(currentUser.created_at).toLocaleDateString() : '-'}</p>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: var(--light-color); border-radius: var(--border-radius);">
+                        <p><strong>Motivation:</strong> ${currentUser.motivation || 'Non renseignée'}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // ==================== DÉCONNEXION ====================
+        window.logout = async function() {
+            try {
+                await window.supabase.auth.signOut();
+                sessionStorage.removeItem('currentUser');
+                localStorage.removeItem('rememberedEmail');
+                window.location.href = '../index.html';
+            } catch (error) {
+                console.error('Erreur déconnexion:', error);
+            }
+        };
     </script>
 </body>
 </html>
